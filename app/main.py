@@ -2,6 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import Base, engine
 from .routers import auth_routes, media_routes
+from dotenv import load_dotenv 
+
+# Load environment variables
+load_dotenv()  # looks for .env in project root
 
 # Create tables
 Base.metadata.create_all(bind=engine)
