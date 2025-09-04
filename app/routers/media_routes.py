@@ -6,6 +6,9 @@ from ..models import MediaAsset, MediaViewLog
 from ..schemas import MediaCreate, MediaOut
 from ..security import get_current_user
 from ..utils import create_stream_token, decode_stream_token
+from sqlalchemy import func
+from ..schemas import MediaAnalyticsOut
+
 
 router = APIRouter(prefix="/media", tags=["media"])
 
@@ -40,3 +43,46 @@ def stream_media(token: str, request: Request, db: Session = Depends(get_db)):
     db.commit()
     # In a real app you would redirect/proxy to the actual file_url.
     return {"message": "Valid stream link", "media_id": media_id, "viewer_ip": client_ip}
+
+
+# Log a view (authenticated)
+@router.post("/{media_id}/view")
+def log_view(media_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    media = db.query(MediaAsset).filter(MediaAsset.id == media_id).first()
+    if not media:
+        raise HTTPException(status_code=404, detail="Media not found")
+
+    client_ip = request.client.host if request.client else "unknown"
+    log = MediaViewLog(media_id=media_id, viewed_by_ip=client_ip)
+    db.add(log)
+    db.commit()
+    return {"message": "View logged", "media_id": media_id, "viewer_ip": client_ip}
+
+
+# Get analytics (authenticated)
+@router.get("/{media_id}/analytics", response_model=MediaAnalyticsOut)
+def get_analytics(media_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    media = db.query(MediaAsset).filter(MediaAsset.id == media_id).first()
+    if not media:
+        raise HTTPException(status_code=404, detail="Media not found")
+
+    # Total views
+    total_views = db.query(func.count(MediaViewLog.id)).filter(MediaViewLog.media_id == media_id).scalar()
+
+    # Unique IPs
+    unique_ips = db.query(func.count(func.distinct(MediaViewLog.viewed_by_ip))).filter(MediaViewLog.media_id == media_id).scalar()
+
+    # Views per day
+    rows = (
+        db.query(func.date(MediaViewLog.timestamp), func.count(MediaViewLog.id))
+        .filter(MediaViewLog.media_id == media_id)
+        .group_by(func.date(MediaViewLog.timestamp))
+        .all()
+    )
+    views_per_day = {str(date): count for date, count in rows}
+
+    return MediaAnalyticsOut(
+        total_views=total_views,
+        unique_ips=unique_ips,
+        views_per_day=views_per_day
+    )

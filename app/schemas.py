@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
+from typing import Dict
 
 # Auth
 class SignupIn(BaseModel):
@@ -25,3 +26,8 @@ class MediaOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class MediaAnalyticsOut(BaseModel):
+    total_views: int
+    unique_ips: int
+    views_per_day: Dict[str, int]
